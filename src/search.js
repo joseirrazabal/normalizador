@@ -3,24 +3,24 @@ import path from 'path'
 import moment from 'moment'
 import crypto from 'crypto'
 import convertir from './ffmpeg.js'
-import Media from '../src/models/medias.js'
-import Piece from '../src/models/pieces.js'
-import List from '../src/models/lists.js'
+import Media from './models/medias.js'
+import Piece from './models/pieces.js'
+import List from './models/lists.js'
 require('moment-duration-format')
 
-async function processFile(file, destino) {
+async function processFile(file, destino, job) {
   try {
 
     console.log("Procesando: "+ file)
 
-    let shaOld = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
+    let shaOld = await getHash(file)
 
-    let existFile = await Media.findOneByOldSha(shaOld)
+    let existFile = await Media.findOneByOldSha(shaOld.sha)
 
     if (!existFile) {
 
-      let info = await convertir.convertir(file, destino)
-      await guardar(info, shaOld)
+      let info = await convertir.convertir(file, destino, job)
+      await guardar(info, shaOld.sha)
       console.log("Guadado: "+ file)
 
     } else {
@@ -34,17 +34,23 @@ async function processFile(file, destino) {
   }
 }
 
-async function procesar(dir, filter, destino) {
-  try {
-    var files = await ls(dir, filter)
+const getHash = function (file, type) {
+  return new Promise((resolve, reject) => {
+    const sha = crypto.createHash('sha256')
+    const md5 = crypto.createHash('md5')
+    const input = fs.createReadStream(file)
 
-    for (const file of files) {
-      await processFile(file, destino)
-    }
+    input.on('readable', () => {
+      const data = input.read();
+      if (data) { 
+        sha.update(data);
+        md5.update(data);
+      } else {
+        return resolve({ sha: sha.digest('hex'), md5: md5.digest('hex') })
+      }
+    })
 
-  } catch(e) {
-    throw new Error(e.message)
-  }
+  })
 }
 
 async function ls(dirPath, filter = []) {
@@ -85,9 +91,10 @@ async function guardar(info, shaOld) {
     ('00' + moment.duration(info.format.duration, 'seconds').seconds()).slice(-2) + '.' +
     Math.round(('0000' + moment.duration(info.format.duration, 'seconds').milliseconds() /10).slice(-4))
 
-  let readFile = fs.readFileSync(file)
-  let shaNew = crypto.createHash('sha256').update(readFile).digest('hex')
-  let checksum = crypto.createHash('md5').update(readFile).digest('hex')
+  let sha = await getHash(file)
+
+  let shaNew = sha.sha
+  let checksum = sha.md5
 
   let data = {
     fileOldSha: shaOld,
@@ -152,4 +159,4 @@ async function guardar(info, shaOld) {
   })
 }
 
-export default { procesar, processFile }
+export default { ls, processFile }

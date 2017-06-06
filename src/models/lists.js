@@ -1,4 +1,4 @@
-import mongoose from '../../config/mongo.js'
+import mongoose from '../config/mongo.js'
 const Schema = mongoose.Schema
 
 var listSchema = new Schema({
